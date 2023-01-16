@@ -23,6 +23,8 @@ from riffusion.datatypes import InferenceInput
 from riffusion.external.prompt_weighting import get_weighted_text_embeddings
 from riffusion.util import torch_util
 
+from pythonosc import udp_client
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -212,6 +214,7 @@ class RiffusionPipeline(DiffusionPipeline):
         init_image: Image.Image,
         mask_image: T.Optional[Image.Image] = None,
         use_reweighting: bool = True,
+        osc_client: T.Optional[udp_client] = None,
     ) -> Image.Image:
         """
         Runs inference using interpolation with both img2img and text conditioning.
@@ -224,6 +227,7 @@ class RiffusionPipeline(DiffusionPipeline):
                         channel (luminance) before use.
             use_reweighting: Use prompt reweighting
         """
+        print(inputs)
         alpha = inputs.alpha
         start = inputs.start
         end = inputs.end
@@ -282,6 +286,7 @@ class RiffusionPipeline(DiffusionPipeline):
             strength_b=end.denoising,
             num_inference_steps=inputs.num_inference_steps,
             guidance_scale=guidance_scale,
+            osc_client=osc_client
         )
 
         return outputs["images"][0]
@@ -303,6 +308,7 @@ class RiffusionPipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         eta: T.Optional[float] = 0.0,
         output_type: T.Optional[str] = "pil",
+        osc_client: T.Optional[udp_client] = None,
         **kwargs,
     ):
         """
@@ -396,6 +402,9 @@ class RiffusionPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps[t_start:].to(self.device)
 
         for i, t in enumerate(self.progress_bar(timesteps)):
+            if osc_client:        
+                osc_client.send_message("/diffusion", i) 
+    
             # expand the latents if we are doing classifier free guidance
             latent_model_input = (
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents
