@@ -22,6 +22,9 @@ from pythonosc import dispatcher
 from pythonosc import osc_server, udp_client
 import os, random
 
+import whisper
+model = whisper.load_model("base.en")
+
 
 # %%
 
@@ -47,16 +50,14 @@ converter = SpectrogramImageConverter(params=params, device=str(PIPELINE.device)
 # client
 client = udp_client.SimpleUDPClient('127.0.0.1', 10018)
 
-def generate(prompt):
-    prompt_a = prompt
+def generate_with_prompt(address,prompt_a, prompt_b, denoising=0.75, iteration=50):
+    seed_a = 1091 #np.random.randint(0, 2147483647)
+#    seed_b = np.random.randint(0, 2147483647)
 
-    seed_a = np.random.randint(0, 2147483647)
-    seed_b = np.random.randint(0, 2147483647)
-
-    start = PromptInput(prompt=prompt_a, seed=seed_a, denoising=1.0)
-    prompt_b = prompt_a
+    start = PromptInput(prompt=prompt_a, seed=seed_a, denoising=denoising)
+#    prompt_b = prompt_a
     alpha = 0
-    end = PromptInput(prompt=prompt_b, seed=seed_b, denoising=1.0)
+    end = PromptInput(prompt=prompt_b, seed=seed_a, denoising=denoising)
 
     num_segments = 8
 
@@ -67,8 +68,8 @@ def generate(prompt):
             start=start,
             end=end,
             alpha=alpha,
-            num_inference_steps=50,
-            seed_image_id=None,
+            num_inference_steps=iteration,
+#            seed_image_id=None,
         )
 
         image = PIPELINE.riffuse(
@@ -100,16 +101,20 @@ def generate(prompt):
         client.send_message("/generated", (filepath, imagepath, i)) 
 
 
+def transcribe(address, path):
+    print(path)
+    result = model.transcribe(path)
+    print(result)
+    txt = result["text"]
+    client.send_message("/whisper", (txt)) 
+
 #    client.send_message("/generated", (filepath, imagepath)) 
 # %%
-
-# generate randomly
-def generate_with_prompt(unused_addr, prompt, ):
-    generate(prompt)
 
 # server
 dispatcher = dispatcher.Dispatcher()
 dispatcher.map("/generate", generate_with_prompt)
+dispatcher.map("/transcribe", transcribe)
 
 server = osc_server.ThreadingOSCUDPServer(
     ('localhost', 10015), dispatcher)
